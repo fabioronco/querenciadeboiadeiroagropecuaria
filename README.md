@@ -25,6 +25,6 @@ O projeto está configurado para deploy como site estático:
 - **Framework preset:** None
 - **Build command:** deixe em branco
 - **Build output directory:** `.`
-- **Root directory:** `pecuaria-web` (caso conecte o repositório pela pasta-pai)
+- **Root directory:** deixe em branco (o aplicativo está na raiz deste repositório)
 
 O arquivo `wrangler.toml` já registra essa configuração. Após conectar o repositório ao Cloudflare Pages, cada envio para a branch `main` gera uma nova publicação automaticamente.
