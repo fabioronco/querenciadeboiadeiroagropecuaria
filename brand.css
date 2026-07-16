@@ -1,0 +1,31 @@
+.brand {
+  padding: 0 8px 34px;
+  gap: 11px;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.12;
+}
+
+.brand-logo {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  object-fit: cover;
+  object-position: 50% 31%;
+  border: 2px solid #e7b75a;
+  border-radius: 50%;
+  background: #f6f2e8;
+}
+
+.brand-name {
+  display: grid;
+  gap: 3px;
+}
+
+.brand-name small {
+  color: #c7d9cb;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1.35px;
+  text-transform: uppercase;
+}
