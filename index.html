@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1d5b46" />
+    <title>Pecuária em Dia</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="sidebar" id="sidebar">
+        <div class="brand"><span class="brand-mark">P</span><span>Pecuária em Dia</span></div>
+        <nav>
+          <button class="nav-item active" data-view="dashboard">⌂ <span>Visão geral</span></button>
+          <button class="nav-item" data-view="capital">◫ <span>Capital de giro</span></button>
+          <button class="nav-item" data-view="gastos">▣ <span>Investimentos e gastos</span></button>
+          <button class="nav-item" data-view="compras">↓ <span>Compras de gado</span></button>
+          <button class="nav-item" data-view="vendas">↑ <span>Vendas de gado</span></button>
+        </nav>
+        <div class="side-note"><span class="dot"></span><div><strong>Dados neste aparelho</strong><br />Conecte ao banco online para compartilhar em tempo real.</div></div>
+      </aside>
+      <main>
+        <header class="topbar">
+          <button class="menu" id="menuBtn" aria-label="Abrir menu">☰</button>
+          <div><p class="eyebrow">FAZENDA / OPERAÇÃO PECUÁRIA</p><h1 id="pageTitle">Visão geral</h1></div>
+          <div class="profile"><span class="avatar">F</span><div><strong>Fabio</strong><small>Administrador</small></div></div>
+        </header>
+        <section id="app"></section>
+      </main>
+    </div>
+    <dialog id="recordDialog"><form method="dialog" id="recordForm"><div class="modal-head"><div><p class="eyebrow" id="modalEyebrow">NOVO LANÇAMENTO</p><h2 id="modalTitle">Adicionar lançamento</h2></div><button class="icon-btn" value="cancel">×</button></div><div class="form-grid" id="formFields"></div><div class="modal-actions"><button class="btn secondary" value="cancel">Cancelar</button><button class="btn primary" id="saveBtn" value="default">Salvar lançamento</button></div></form></dialog>
+    <script src="app.js"></script>
+  </body>
+</html>
