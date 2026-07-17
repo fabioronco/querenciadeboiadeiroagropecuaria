@@ -136,3 +136,12 @@ if (cloudToken) {
 setInterval(() => {
   if (cloudToken && !document.querySelector('#mainShell').classList.contains('hide')) void loadCloudData(false).catch(() => {});
 }, 30000);
+
+// Recuperação temporária: o controle local permanece disponível enquanto a
+// sincronização online é revisada. Isso preserva os registros já salvos neste aparelho.
+cloudToken = '';
+localStorage.removeItem(cloudTokenKey);
+sessionStorage.removeItem(cloudTokenKey);
+document.querySelector('#loginScreen').classList.add('hide');
+document.querySelector('#mainShell').classList.remove('hide');
+render();
