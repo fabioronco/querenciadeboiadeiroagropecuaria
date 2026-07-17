@@ -1,5 +1,26 @@
 (() => {
   const sourceUrl = 'https://beta.noticiasagricolas.com.br/cotacoes/boi-gordo';
+  const showApp = () => {
+    document.querySelector('#loginScreen').style.display = 'none';
+    const shell = document.querySelector('#mainShell');
+    shell.classList.remove('hide');
+    shell.style.display = 'grid';
+    if (!document.querySelector('#app').innerHTML.trim() && typeof window.render === 'function') window.render();
+  };
+  const loginForm = document.querySelector('#loginForm');
+  loginForm?.addEventListener('submit', event => {
+    event.preventDefault();
+    const login = loginForm.elements.login.value.trim().toUpperCase();
+    const password = loginForm.elements.password.value.trim();
+    const valid = login === 'JF' && password === '1708';
+    const error = document.querySelector('#loginError');
+    error.style.display = valid ? 'none' : 'block';
+    if (!valid) return;
+    if (loginForm.elements.remember.checked) localStorage.setItem('querencia-remembered-access', 'JF');
+    else localStorage.removeItem('querencia-remembered-access');
+    showApp();
+  });
+  if (localStorage.getItem('querencia-remembered-access') === 'JF') showApp();
   const renderMarket = () => {
     const target = document.querySelector('#app');
     if (!target) return;
