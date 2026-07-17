@@ -10,20 +10,20 @@
     <link rel="stylesheet" href="brand.css" />
   </head>
   <body>
-    <section class="login-screen hide" id="loginScreen">
+    <section class="login-screen" id="loginScreen">
       <form class="login-card" id="loginForm">
         <img src="assets/logo-querencia-de-boiadeiro.jpeg" alt="Querência de Boiadeiro Agropecuária" />
         <p class="eyebrow">ACESSO SEGURO</p>
         <h1>Querência de Boiadeiro</h1>
         <p>Entre para acompanhar a operação pecuária.</p>
-        <label>Login<input name="login" autocomplete="username" required placeholder="Ex.: JF" /></label>
+        <label>Login<input name="login" autocomplete="username" required placeholder="Ex.: QDB" /></label>
         <label>Senha<input name="password" type="password" autocomplete="current-password" required placeholder="Sua senha" /></label>
-        <label class="remember-login"><input name="remember" type="checkbox" /> Manter conectado neste aparelho</label>
+        <label class="remember-login"><input name="remember" type="checkbox" checked /> Manter conectado neste aparelho</label>
         <p class="login-error hide" id="loginError">Login ou senha incorretos.</p>
-        <button class="btn primary" type="button" onclick="(function(){var f=document.getElementById('loginForm'),ok=f.elements.login.value.trim().toUpperCase()==='JF'&&f.elements.password.value.trim()==='1708',e=document.getElementById('loginError');e.style.display=ok?'none':'block';if(ok){document.getElementById('loginScreen').style.display='none';var s=document.getElementById('mainShell');s.classList.remove('hide');s.style.display='grid';}})()">Entrar no sistema</button>
+        <button class="btn primary" type="submit">Entrar no sistema</button>
       </form>
     </section>
-    <div class="shell" id="mainShell">
+    <div class="shell hide" id="mainShell">
       <aside class="sidebar" id="sidebar">
         <div class="brand">
           <img class="brand-logo" src="assets/logo-querencia-de-boiadeiro.jpeg" alt="Logo Querência de Boiadeiro Agropecuária" />
@@ -36,7 +36,7 @@
           <button class="nav-item" data-view="compras">↓ <span>Compras de gado</span></button>
           <button class="nav-item" data-view="vendas">↑ <span>Vendas de gado</span></button>
         </nav>
-        <div class="side-note"><span class="dot"></span><div><strong>Dados neste aparelho</strong><br />Conecte ao banco online para compartilhar em tempo real.</div></div>
+        <div class="side-note"><span class="dot"></span><div><strong>Dados sincronizados</strong><br />Disponíveis em todos os aparelhos conectados.</div></div>
       </aside>
       <main>
         <header class="topbar">
