@@ -31,3 +31,21 @@ document.querySelector('#menuBtn').onclick=()=>document.querySelector('#sidebar'
 document.querySelector('#recordForm').addEventListener('submit',async event=>{ event.preventDefault(); try { const form=event.currentTarget, formData=new FormData(form), row=Object.fromEntries(formData.entries()); row.attachments=await readFiles(form.querySelector('[name=attachments]')?.files); ['value','freight','quantity','avgWeight','price','commission'].forEach(name=>row[name]=parseNum(row[name])); const map={expense:'expenses',purchase:'purchases',sale:'sales',quote:'quotes'};data[map[document.querySelector('#recordDialog').dataset.type]].unshift(row);save();document.querySelector('#recordDialog').close();render(); } catch(error) { alert(error.message || 'Não foi possível salvar os anexos.'); } });
 document.querySelector('#loginForm').addEventListener('submit',event=>{event.preventDefault();const f=new FormData(event.currentTarget);const ok=f.get('login').trim().toUpperCase()==='JF'&&f.get('password')==='1708';document.querySelector('#loginError').classList.toggle('hide',ok);if(ok){sessionStorage.setItem('querencia-session','JF');document.querySelector('#loginScreen').classList.add('hide');document.querySelector('#mainShell').classList.remove('hide');render();}});
 if(sessionStorage.getItem('querencia-session')==='JF'){document.querySelector('#loginScreen').classList.add('hide');document.querySelector('#mainShell').classList.remove('hide');render();}
+
+// Versão sem o módulo de cotações externas.
+function dashboard() {
+  const p = total(data.purchases), s = total(data.sales), e = total(data.expenses);
+  const next = schedule().find(item => item.due >= new Date());
+  return `<div class="content"><div class="hero"><div><p class="eyebrow">OPERAÇÃO EM UM SÓ LUGAR</p><h2>Bem-vindo, JF.</h2><p>Controle compras, vendas, custos e documentos da fazenda.</p></div>${button('purchase','Registrar compra')}</div><div class="cards"><div class="card"><div class="card-label">Compras de gado</div><div class="card-value">${money(p)}</div><div class="card-foot">${data.purchases.length} lote(s) registrado(s)</div></div><div class="card"><div class="card-label">Vendas de gado</div><div class="card-value green">${money(s)}</div><div class="card-foot">${data.sales.length} lote(s) registrado(s)</div></div><div class="card"><div class="card-label">Investimentos e gastos</div><div class="card-value red">${money(e)}</div><div class="card-foot">${data.expenses.length} lançamento(s)</div></div><div class="card"><div class="card-label">Resultado operacional</div><div class="card-value ${s-p-e>=0?'green':'red'}">${money(s-p-e)}</div><div class="card-foot">Vendas − compras − gastos</div></div></div><div class="grid-2"><div class="panel"><div class="panel-head"><div><h3>Próximo compromisso do capital de giro</h3><small>R$ 500.000 · 1,3% ao mês</small></div><button class="btn secondary" data-view-link="capital">Ver cronograma</button></div><div class="timeline">${next?`<div class="timeline-row"><div><strong>${dateBR(next.due.toISOString().slice(0,10))}</strong><br><small>Mês ${next.month}</small></div><div><strong>${next.phase}</strong><br><small>Pagamento previsto</small></div><div class="amount">${money(next.payment)}</div></div>`:'<p class="empty">Cronograma concluído.</p>'}</div></div><div class="panel"><div class="panel-head"><h3>Atalhos</h3></div><div class="timeline"><div class="timeline-row"><div>↓</div><div><strong>Compra de gado</strong><br><small>Com fotos e documentos do lote</small></div>${button('purchase','Adicionar')}</div><div class="timeline-row"><div>▣</div><div><strong>Gasto ou investimento</strong><br><small>Com orçamento e comprovantes</small></div>${button('expense','Adicionar')}</div></div></div></div></div>`;
+}
+
+function render() {
+  const titles = { dashboard:'Visão geral', capital:'Capital de giro', gastos:'Investimentos e gastos', compras:'Compras de gado', vendas:'Vendas de gado' };
+  if (!titles[currentView]) currentView = 'dashboard';
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.view === currentView));
+  document.querySelector('#pageTitle').textContent = titles[currentView];
+  app.innerHTML = currentView === 'dashboard' ? dashboard() : currentView === 'capital' ? capital() : recordsView(currentView);
+  bindPage();
+}
+
+render();
