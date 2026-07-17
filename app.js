@@ -49,3 +49,90 @@ function render() {
 }
 
 render();
+
+// Sincronização segura entre aparelhos via Cloudflare Pages Functions + D1.
+const cloudTokenKey = 'querencia-cloud-token';
+let cloudToken = localStorage.getItem(cloudTokenKey) || sessionStorage.getItem(cloudTokenKey) || '';
+
+async function api(path, options = {}) {
+  const headers = { ...(options.headers || {}), 'content-type': 'application/json' };
+  if (cloudToken) headers.authorization = `Bearer ${cloudToken}`;
+  const response = await fetch(`/api${path}`, { ...options, headers });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || 'Não foi possível sincronizar os dados.');
+  return body;
+}
+
+function hasLocalRecords() {
+  return data.expenses.length || data.purchases.length || data.sales.length;
+}
+
+async function loadCloudData(migrate = false) {
+  const response = await api('/state');
+  if (response.state) {
+    data = { expenses: response.state.expenses || [], purchases: response.state.purchases || [], sales: response.state.sales || [], quotes: [] };
+    localStorage.setItem(key, JSON.stringify(data));
+  } else if (migrate && hasLocalRecords()) {
+    await api('/state', { method: 'PUT', body: JSON.stringify({ state: data }) });
+  }
+  render();
+}
+
+async function saveCloud() {
+  if (!cloudToken) return;
+  try {
+    await api('/state', { method: 'PUT', body: JSON.stringify({ state: data }) });
+  } catch (error) {
+    console.error(error);
+    document.querySelector('.side-note strong').textContent = 'Aguardando sincronização';
+  }
+}
+
+function save() {
+  localStorage.setItem(key, JSON.stringify(data));
+  void saveCloud();
+}
+
+async function enterApp(migrate = false) {
+  await loadCloudData(migrate);
+  document.querySelector('#loginScreen').classList.add('hide');
+  document.querySelector('#mainShell').classList.remove('hide');
+  document.querySelector('.profile strong').textContent = 'QDB';
+  document.querySelector('.avatar').textContent = 'QDB';
+  render();
+}
+
+document.querySelector('#loginForm').addEventListener('submit', async event => {
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  const form = event.currentTarget;
+  const loginError = document.querySelector('#loginError');
+  const submit = form.querySelector('[type=submit]');
+  submit.disabled = true;
+  try {
+    const formData = new FormData(form);
+    const response = await api('/auth/login', { method: 'POST', body: JSON.stringify({ username: formData.get('login'), password: formData.get('password') }) });
+    cloudToken = response.token;
+    const storage = formData.get('remember') ? localStorage : sessionStorage;
+    storage.setItem(cloudTokenKey, cloudToken);
+    loginError.classList.add('hide');
+    await enterApp(true);
+  } catch (error) {
+    loginError.textContent = error.message;
+    loginError.classList.remove('hide');
+  } finally {
+    submit.disabled = false;
+  }
+}, true);
+
+if (cloudToken) {
+  api('/auth/me').then(() => enterApp(false)).catch(() => {
+    cloudToken = '';
+    localStorage.removeItem(cloudTokenKey);
+    sessionStorage.removeItem(cloudTokenKey);
+  });
+}
+
+setInterval(() => {
+  if (cloudToken && !document.querySelector('#mainShell').classList.contains('hide')) void loadCloudData(false).catch(() => {});
+}, 30000);
