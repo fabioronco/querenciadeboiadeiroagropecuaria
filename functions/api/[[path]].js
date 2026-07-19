@@ -1,7 +1,7 @@
 const encoder = new TextEncoder();
 const INITIAL_USER = 'QDB';
 const INITIAL_SALT = 'QDB-2026-Cloudflare';
-const INITIAL_HASH = 'ERf7xUeezPZ8W1QIbA5hyDxcIlR1qMO7loPS/Gtl05Q=';
+const INITIAL_HASH = '0EkeTHfPU9iCihtGx+p1FInJZ3bp/Qtl95FRu12aIz0=';
 
 const json = (body, status = 200) => new Response(JSON.stringify(body), {
   status,
@@ -16,7 +16,7 @@ function base64(bytes) {
 
 async function passwordHash(password, salt) {
   const key = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: encoder.encode(salt), iterations: 310000 }, key, 256);
+  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: encoder.encode(salt), iterations: 100000 }, key, 256);
   return base64(new Uint8Array(bits));
 }
 
@@ -34,6 +34,7 @@ async function setup(db) {
     CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL, expires_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS app_state (id INTEGER PRIMARY KEY CHECK (id = 1), payload TEXT NOT NULL, updated_at TEXT NOT NULL, updated_by INTEGER);
     INSERT OR IGNORE INTO users (id, username, password_hash, salt, created_at) VALUES (1, '${INITIAL_USER}', '${INITIAL_HASH}', '${INITIAL_SALT}', datetime('now'));
+    UPDATE users SET password_hash = '${INITIAL_HASH}', salt = '${INITIAL_SALT}' WHERE id = 1 AND username = '${INITIAL_USER}';
   `);
 }
 
