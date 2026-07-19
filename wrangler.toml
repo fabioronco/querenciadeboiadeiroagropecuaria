@@ -4,20 +4,9 @@ compatibility_date = "2026-07-16"
 
 [assets]
 directory = "."
+binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = ["/api/*"]
-
-[[d1_databases]]
-binding = "DB"
-database_name = "qdb-pecuaria"
-database_id = "21a0878a-c05b-44e0-aa62-e6a82427bcdc"
-name = "querenciadeboiadeiroagropecuaria"
-main = "worker.js"
-compatibility_date = "2026-07-16"
-
-[assets]
-directory = "."
-not_found_handling = "single-page-application"
 
 [[d1_databases]]
 binding = "DB"
