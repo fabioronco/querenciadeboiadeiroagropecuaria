@@ -77,7 +77,7 @@ export async function onRequest(context) {
   if (path === '/state' && request.method === 'PUT') {
     const { state } = await request.json().catch(() => ({}));
     if (!state || !Array.isArray(state.expenses) || !Array.isArray(state.purchases) || !Array.isArray(state.sales)) return json({ error: 'Dados inválidos.' }, 400);
-    const payload = JSON.stringify({ expenses: state.expenses, purchases: state.purchases, sales: state.sales });
+    const payload = JSON.stringify({ expenses: state.expenses, purchases: state.purchases, sales: state.sales, meta: state.meta || {} });
     await db.prepare(`INSERT INTO app_state (id, payload, updated_at, updated_by) VALUES (1, ?, datetime('now'), ?) ON CONFLICT(id) DO UPDATE SET payload = excluded.payload, updated_at = excluded.updated_at, updated_by = excluded.updated_by`).bind(payload, user.id).run();
     return json({ ok: true });
   }
