@@ -1,4 +1,4 @@
-name = "querenciadeboiadeiroagropecuaria"
+name = "qdb"
 main = "worker.js"
 compatibility_date = "2026-07-16"
 
