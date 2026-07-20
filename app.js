@@ -1,6 +1,6 @@
 (() => {
 const key = 'querencia-boiadeiro-v2';
-const seed = { expenses: [], purchases: [], sales: [], quotes: [] };
+const seed = { expenses: [], purchases: [], sales: [], quotes: [], meta: { capitalInterestProvisioned: false } };
 let data = JSON.parse(localStorage.getItem(key) || JSON.stringify(seed));
 let currentView = 'dashboard';
 const app = document.querySelector('#app');
@@ -24,6 +24,30 @@ const esc = value => String(value || '').replace(/[&<>"]/g, char => ({ '&':'&amp
 function save() { localStorage.setItem(key, JSON.stringify(data)); }
 function button(type, label = 'Novo lançamento') { return `<button class="btn primary" data-new="${type}">+ ${label}</button>`; }
 function schedule() { const start = new Date(2026, 6, 15); return Array.from({ length:24 }, (_, i) => { const month=i+1, due=new Date(start); due.setMonth(start.getMonth()+i); const interest=month<=3?0:6500+(month<=15?1625:0); return { month, due, phase:month<=3?'Carência':month<=15?'Diluição':'Juros normais', interest, amortization:month===24?500000:0, payment:interest+(month===24?500000:0) }; }); }
+function ensureCapitalInterestProvisions() {
+  data.meta = data.meta || {};
+  if (data.meta.capitalInterestProvisioned) return false;
+  const provisions = schedule().filter(item => item.interest > 0).map(item => ({
+    date: today,
+    dueDate: item.due.toISOString().slice(0, 10),
+    paymentStatus: 'A pagar',
+    type: 'Despesa',
+    category: 'Financeiro',
+    lot: '',
+    party: 'Capital de giro',
+    value: item.interest,
+    description: `Juros do capital de giro — Mês ${item.month}`,
+    attachments: [],
+    systemProvision: 'capital-interest',
+    scheduleMonth: item.month,
+  }));
+  const existing = new Set(data.expenses.filter(row => row.systemProvision === 'capital-interest').map(row => Number(row.scheduleMonth)));
+  data.expenses.push(...provisions.filter(row => !existing.has(row.scheduleMonth)));
+  data.expenses.sort((a, b) => String(a.dueDate || a.date || '').localeCompare(String(b.dueDate || b.date || '')));
+  data.meta.capitalInterestProvisioned = true;
+  localStorage.setItem(key, JSON.stringify(data));
+  return true;
+}
 function attachmentBadge(row, label = 'Anexos') { const count = (row.attachments || []).length; return count ? `<span class="attachment-badge">⌕ ${count} ${label}</span>` : '—'; }
 function dashboard() { const p=total(data.purchases), s=total(data.sales), e=total(data.expenses), next=schedule().find(item=>item.due>=new Date()); return `<div class="content"><div class="hero"><div><p class="eyebrow">OPERAÇÃO EM UM SÓ LUGAR</p><h2>Bem-vindo, JF.</h2><p>Controle compras, vendas, custos, cotações e documentos da fazenda.</p></div>${button('purchase','Registrar compra')}</div><div class="cards"><div class="card"><div class="card-label">Compras de gado</div><div class="card-value">${money(p)}</div><div class="card-foot">${data.purchases.length} lote(s) registrado(s)</div></div><div class="card"><div class="card-label">Vendas de gado</div><div class="card-value green">${money(s)}</div><div class="card-foot">${data.sales.length} lote(s) registrado(s)</div></div><div class="card"><div class="card-label">Investimentos e gastos</div><div class="card-value red">${money(e)}</div><div class="card-foot">${data.expenses.length} lançamento(s)</div></div><div class="card"><div class="card-label">Resultado operacional</div><div class="card-value ${s-p-e>=0?'green':'red'}">${money(s-p-e)}</div><div class="card-foot">Vendas − compras − gastos</div></div></div><div class="grid-2"><div class="panel"><div class="panel-head"><div><h3>Próximo compromisso do capital de giro</h3><small>R$ 500.000 · 1,3% ao mês</small></div><button class="btn secondary" data-view-link="capital">Ver cronograma</button></div><div class="timeline">${next?`<div class="timeline-row"><div><strong>${dateBR(next.due.toISOString().slice(0,10))}</strong><br><small>Mês ${next.month}</small></div><div><strong>${next.phase}</strong><br><small>Pagamento previsto</small></div><div class="amount">${money(next.payment)}</div></div>`:'<p class="empty">Cronograma concluído.</p>'}</div></div><div class="panel"><div class="panel-head"><h3>Atalhos</h3></div><div class="timeline"><div class="timeline-row"><div>↓</div><div><strong>Compra de gado</strong><br><small>Com fotos e documentos do lote</small></div>${button('purchase','Adicionar')}</div><div class="timeline-row"><div>▣</div><div><strong>Gasto ou investimento</strong><br><small>Com orçamento e comprovantes</small></div>${button('expense','Adicionar')}</div><div class="timeline-row"><div>⌁</div><div><strong>Cotação de animais</strong><br><small>Compare propostas de compra e venda</small></div>${button('quote','Cotação')}</div></div></div></div></div>`; }
 function capital() { const rows=schedule(); return `<div class="content"><div class="section-title"><div><h2>Capital de giro</h2><p>R$ 500.000 · 24 meses · juros de 1,3% ao mês</p></div><span class="pill gold">Carência: 3 meses</span></div><div class="cards"><div class="card"><div class="card-label">Juro mensal base</div><div class="card-value">${money(6500)}</div></div><div class="card"><div class="card-label">Juros da carência</div><div class="card-value">${money(19500)}</div><div class="card-foot">diluídos em 12 meses</div></div><div class="card"><div class="card-label">Total de juros</div><div class="card-value">${money(156000)}</div></div><div class="card"><div class="card-label">Total previsto</div><div class="card-value">${money(656000)}</div><div class="card-foot">inclui quitação do principal</div></div></div><div class="panel"><div class="panel-head"><div><h3>Cronograma de pagamento</h3><small>O principal está previsto para quitação no mês 24.</small></div></div><div class="table-wrap"><table><thead><tr><th>Mês</th><th>Vencimento</th><th>Fase</th><th>Juros</th><th>Amortização</th><th>Pagamento</th></tr></thead><tbody>${rows.map(row=>`<tr><td>${row.month}</td><td>${dateBR(row.due.toISOString().slice(0,10))}</td><td><span class="pill ${row.phase==='Diluição'?'gold':''}">${row.phase}</span></td><td>${money(row.interest)}</td><td>${money(row.amortization)}</td><td class="amount">${money(row.payment)}</td></tr>`).join('')}</tbody></table></div></div></div>`; }
@@ -95,11 +119,12 @@ function hasLocalRecords() {
 async function loadCloudData(migrate = false) {
   const response = await api('/state');
   if (response.state) {
-    data = { expenses: response.state.expenses || [], purchases: response.state.purchases || [], sales: response.state.sales || [], quotes: [] };
+    data = { expenses: response.state.expenses || [], purchases: response.state.purchases || [], sales: response.state.sales || [], quotes: [], meta: response.state.meta || {} };
     localStorage.setItem(key, JSON.stringify(data));
   } else if (migrate && hasLocalRecords()) {
     await api('/state', { method: 'PUT', body: JSON.stringify({ state: data }) });
   }
+  if (ensureCapitalInterestProvisions()) await api('/state', { method: 'PUT', body: JSON.stringify({ state: data }) });
   render();
 }
 
