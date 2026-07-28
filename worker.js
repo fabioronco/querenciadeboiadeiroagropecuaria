@@ -13,6 +13,10 @@ export default {
         });
       }
     }
+    const hostname = url.hostname.toLowerCase();
+    if ((hostname === 'qdba.com.br' || hostname === 'www.qdba.com.br') && url.pathname === '/') {
+      return env.ASSETS.fetch(new Request(new URL('/site.html', url), request));
+    }
     return env.ASSETS.fetch(request);
   },
 };
