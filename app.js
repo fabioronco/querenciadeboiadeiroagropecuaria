@@ -21,7 +21,21 @@ const dueThisMonth = () => {
 };
 const parseNum = value => Number(String(value || '0').replace(',', '.')) || 0;
 const esc = value => String(value || '').replace(/[&<>"]/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[char]));
-function save() { localStorage.setItem(key, JSON.stringify(data)); }
+function localRecord(row) {
+  const copy = { ...row };
+  // Fotos antigas em Base64 podem ocupar vários megabytes no navegador. O
+  // lançamento financeiro permanece; apenas o arquivo local é omitido do cache.
+  if (Array.isArray(copy.attachments)) copy.attachments = copy.attachments.map(file => ({ key:file.key || '', name:file.name || 'anexo', type:file.type || '', size:Number(file.size || 0), shared:Boolean(file.key || file.shared), localOnly:Boolean(file.localOnly || (!file.key && file.url)) }));
+  return copy;
+}
+function saveLocalState(source = data) {
+  try { localStorage.setItem(key, JSON.stringify(source)); }
+  catch (error) {
+    const compact = { expenses:(source.expenses || []).map(localRecord), purchases:(source.purchases || []).map(localRecord), sales:(source.sales || []).map(localRecord), quotes:source.quotes || [], meta:source.meta || {} };
+    localStorage.setItem(key, JSON.stringify(compact));
+  }
+}
+function save() { saveLocalState(data); }
 function button(type, label = 'Novo lançamento') { return `<button class="btn primary" data-new="${type}">+ ${label}</button>`; }
 function schedule() { const start = new Date(2026, 6, 15); return Array.from({ length:24 }, (_, i) => { const month=i+1, due=new Date(start); due.setMonth(start.getMonth()+i); const interest=month<=3?0:6500+(month<=15?1625:0); return { month, due, phase:month<=3?'Carência':month<=15?'Diluição':'Juros normais', interest, amortization:month===24?500000:0, payment:interest+(month===24?500000:0) }; }); }
 function ensureCapitalInterestProvisions() {
@@ -45,7 +59,7 @@ function ensureCapitalInterestProvisions() {
   data.expenses.push(...provisions.filter(row => !existing.has(row.scheduleMonth)));
   data.expenses.sort((a, b) => String(a.dueDate || a.date || '').localeCompare(String(b.dueDate || b.date || '')));
   data.meta.capitalInterestProvisioned = true;
-  localStorage.setItem(key, JSON.stringify(data));
+  saveLocalState(data);
   return true;
 }
 function attachmentBadge(row, label = 'Anexos') { const count = (row.attachments || []).length; return count ? `<span class="attachment-badge">⌕ ${count} ${label}</span>` : '—'; }
@@ -323,7 +337,7 @@ async function loadCloudData(migrate = false) {
     const merged = mergeCloudWithLocal(remote);
     const mustWrite = needsCloudWrite(remote, merged);
     data = merged;
-    localStorage.setItem(key, JSON.stringify(data));
+    saveLocalState(data);
     if (mustWrite) await api('/state', { method: 'PUT', body: JSON.stringify({ state: cloudState(data) }) });
   } else if (migrate && hasLocalRecords()) {
     await api('/state', { method: 'PUT', body: JSON.stringify({ state: cloudState(data) }) });
@@ -346,7 +360,7 @@ async function saveCloud() {
 }
 
 function save() {
-  localStorage.setItem(key, JSON.stringify(data));
+  saveLocalState(data);
   void saveCloud();
 }
 
