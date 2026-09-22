@@ -297,17 +297,51 @@ function preferRecord(current, incoming) {
 }
 
 function mergeRows(type, remoteRows, localRows) {
-  const merged = [];
+  // Agrupa antes de comparar. A versão anterior procurava cada lançamento na
+  // lista inteira; com muitos registros duplicados isso travava o navegador.
+  const groups = new Map();
   [...(remoteRows || []), ...(localRows || [])].forEach(row => {
     const legacy = legacyRowKey(type, row);
-    const existingIndex = merged.findIndex(existing =>
-      (row.id && existing.id && row.id === existing.id) ||
-      (legacyRowKey(type, existing) === legacy && (row.id || existing.id || lotText(row.lot) !== lotText(existing.lot)))
-    );
-    if (existingIndex >= 0) merged[existingIndex] = preferRecord(merged[existingIndex], row);
-    else merged.push(row);
+    if (!groups.has(legacy)) groups.set(legacy, []);
+    groups.get(legacy).push(row);
   });
-  return merged;
+  const result = [];
+  groups.forEach(rows => {
+    const identified = new Map();
+    const legacyRows = [];
+    rows.forEach(row => {
+      if (!row.id) { legacyRows.push(row); return; }
+      identified.set(row.id, identified.has(row.id) ? preferRecord(identified.get(row.id), row) : row);
+    });
+    if (identified.size === 1 && legacyRows.length) {
+      let chosen = [...identified.values()][0];
+      legacyRows.forEach(row => { chosen = preferRecord(row, chosen); });
+      result.push(chosen);
+      return;
+    }
+    if (!identified.size) {
+      const withLot = legacyRows.filter(row => lotText(row.lot));
+      const withoutLot = legacyRows.filter(row => !lotText(row.lot));
+      // Um lançamento sem lote e outro igual com lote é a duplicação gerada
+      // pela edição; mantém a versão vinculada ao lote.
+      if (withLot.length && withoutLot.length) {
+        let chosen = withLot.reduce(preferRecord);
+        withoutLot.forEach(row => { chosen = preferRecord(row, chosen); });
+        result.push(chosen);
+        return;
+      }
+      // Registros exatamente iguais também são cópias de sincronização.
+      const exact = new Map();
+      legacyRows.forEach(row => {
+        const key = rowKey(type, row);
+        exact.set(key, exact.has(key) ? preferRecord(exact.get(key), row) : row);
+      });
+      result.push(...exact.values());
+      return;
+    }
+    result.push(...identified.values(), ...legacyRows);
+  });
+  return result;
 }
 
 function mergeCloudWithLocal(remote) {
