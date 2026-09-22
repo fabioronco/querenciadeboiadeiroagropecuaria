@@ -419,7 +419,8 @@ document.querySelector('#loginForm').addEventListener('submit', async event => {
     const response = await api('/auth/login', { method: 'POST', body: JSON.stringify({ username: formData.get('login'), password: formData.get('password') }) });
     cloudToken = response.token;
     const storage = formData.get('remember') ? localStorage : sessionStorage;
-    storage.setItem(cloudTokenKey, cloudToken);
+    try { storage.setItem(cloudTokenKey, cloudToken); }
+    catch (storageError) { sessionStorage.setItem(cloudTokenKey, cloudToken); }
     loginError.classList.add('hide');
     await enterApp(true);
   } catch (error) {
