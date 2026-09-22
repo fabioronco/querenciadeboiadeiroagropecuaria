@@ -29,6 +29,7 @@ main{min-width:0}
 .btn.secondary{background:#eef2ef;color:#445149}
 .btn.danger{background:#fff0ef;color:var(--red)}
 .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:26px}
+.dashboard-cards{grid-template-columns:repeat(5,1fr)}
 .card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px;box-shadow:0 2px 8px #1d5b4608}
 .card-label{color:var(--muted);font-size:12px;margin-bottom:11px}
 .card-value{font-size:24px;font-weight:760;letter-spacing:-.8px}
@@ -90,13 +91,13 @@ dialog::backdrop{background:#13221988}
 .profile div{display:none}
 .content{padding:22px 16px}
 .hero{padding:23px;align-items:start;flex-direction:column}
-.cards{grid-template-columns:repeat(2,1fr)}
+.cards,.dashboard-cards{grid-template-columns:repeat(2,1fr)}
 .grid-2{grid-template-columns:1fr}
 .summary-strip{overflow:auto}
 .section-title{align-items:start;gap:15px}
 .sheet-actions{flex-wrap:wrap}
 }
-@media(max-width:500px){.cards{grid-template-columns:1fr}
+@media(max-width:500px){.cards,.dashboard-cards{grid-template-columns:1fr}
 .hero h2{font-size:22px}
 .card-value{font-size:23px}
 .form-grid{grid-template-columns:1fr}
