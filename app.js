@@ -264,13 +264,36 @@ function cloudState(source = data) {
 }
 
 function rowKey(type, row) {
-  return [type, row.date || '', row.dueDate || '', row.lot || '', row.description || '', row.party || row.seller || row.buyer || '', Number(row.value || 0), Number(row.quantity || 0), Number(row.freight || 0)].join('|');
+  return row.id || [type, row.date || '', row.dueDate || '', row.lot || '', row.description || '', row.party || row.seller || row.buyer || '', Number(row.value || 0), Number(row.quantity || 0), Number(row.freight || 0)].join('|');
+}
+
+// Chave de compatibilidade para registros antigos, criados antes do ID próprio.
+// O lote não entra nela, justamente para reconhecer a mesma despesa quando o
+// usuário apenas informa ou altera o lote durante uma edição.
+function legacyRowKey(type, row) {
+  return [type, row.date || '', row.dueDate || '', row.description || '', row.category || '', row.party || row.seller || row.buyer || '', Number(row.value || 0), Number(row.quantity || 0), Number(row.freight || 0)].join('|');
+}
+
+function preferRecord(current, incoming) {
+  const currentTime = Number(current.updatedAt || 0), incomingTime = Number(incoming.updatedAt || 0);
+  if (incomingTime > currentTime) return { ...current, ...incoming, id: incoming.id || current.id };
+  if (incomingTime < currentTime) return { ...incoming, ...current, id: current.id || incoming.id };
+  if (!lotText(current.lot) && lotText(incoming.lot)) return { ...current, ...incoming, id: incoming.id || current.id };
+  return { ...incoming, ...current, id: current.id || incoming.id };
 }
 
 function mergeRows(type, remoteRows, localRows) {
-  const known = new Set((remoteRows || []).map(row => rowKey(type, row)));
-  const missing = (localRows || []).filter(row => !known.has(rowKey(type, row)));
-  return [...missing, ...(remoteRows || [])];
+  const merged = [];
+  [...(remoteRows || []), ...(localRows || [])].forEach(row => {
+    const legacy = legacyRowKey(type, row);
+    const existingIndex = merged.findIndex(existing =>
+      (row.id && existing.id && row.id === existing.id) ||
+      (legacyRowKey(type, existing) === legacy && (row.id || existing.id || lotText(row.lot) !== lotText(existing.lot)))
+    );
+    if (existingIndex >= 0) merged[existingIndex] = preferRecord(merged[existingIndex], row);
+    else merged.push(row);
+  });
+  return merged;
 }
 
 function mergeCloudWithLocal(remote) {
@@ -466,8 +489,19 @@ document.querySelector('#recordForm').addEventListener('submit', async event => 
     const row = Object.fromEntries(new FormData(form).entries());
     ['value','freight','quantity','avgWeight','price','commission','lossQuantity'].forEach(name => row[name] = parseNum(row[name]));
     const map={expense:'expenses',purchase:'purchases',sale:'sales',quote:'quotes'}, type=dialog.dataset.type, rows=data[map[type]], editIndex=dialog.dataset.editIndex;
-    if (editIndex !== undefined) { row.attachments = rows[Number(editIndex)].attachments || []; rows[Number(editIndex)] = row; delete dialog.dataset.editIndex; }
-    else { row.attachments = []; rows.unshift(row); }
+    if (editIndex !== undefined) {
+      const previous = rows[Number(editIndex)];
+      row.attachments = previous.attachments || [];
+      row.id = previous.id || `${type}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
+      row.updatedAt = Date.now();
+      rows[Number(editIndex)] = row;
+      delete dialog.dataset.editIndex;
+    } else {
+      row.attachments = [];
+      row.id = `${type}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,8)}`;
+      row.updatedAt = Date.now();
+      rows.unshift(row);
+    }
     save(); dialog.close(); render();
   } catch (error) { alert(error.message || 'Não foi possível salvar o lançamento.'); }
 }, true);
