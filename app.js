@@ -3,6 +3,7 @@ const key = 'querencia-boiadeiro-v2';
 const seed = { expenses: [], purchases: [], sales: [], quotes: [], meta: { capitalInterestProvisioned: false } };
 let data = JSON.parse(localStorage.getItem(key) || JSON.stringify(seed));
 let currentView = 'dashboard';
+let expenseReportFilters = { scope: 'all', categories: [] };
 const app = document.querySelector('#app');
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 const money = n => brl.format(Number(n || 0));
@@ -241,13 +242,38 @@ function lotReport() {
 
 function recordsView(kind) {
   const expense = kind === 'gastos';
+  const expenseCategories = [...new Set(['Frete','Despesa de viagem','Alimentação','Sanidade','Medicamento','Mão de obra','Insumo','Infraestrutura','Financeiro','Perda de animais','Outro', ...data.expenses.map(row => row.category).filter(Boolean)])];
+  const filteredExpenses = data.expenses.filter(row => {
+    const hasLot = Boolean(lotText(row.lot));
+    const scopeMatches = expenseReportFilters.scope === 'all' || (expenseReportFilters.scope === 'lot' ? hasLot : !hasLot);
+    const categoryMatches = !expenseReportFilters.categories.length || expenseReportFilters.categories.includes(row.category);
+    return scopeMatches && categoryMatches;
+  }).sort((a,b) => dateValue(b).localeCompare(dateValue(a)));
   const cfg = expense
-    ? { title:'Investimentos e gastos', desc:'Lance todo custo do lote: frete, viagem, insumo, medicamento ou perdas.', type:'expense', rows:data.expenses, cols:['Lançamento','Vencimento','Status','Tipo','Categoria','Descrição','Lote / alocação','Perda','Fornecedor','Valor'], values:r=>[dateBR(r.date),dateBR(r.dueDate || r.date),expenseStatusBadge(r),r.type,r.category,r.description,`${r.lot || '—'}${r.expenseAnimalType && !allOption(r.expenseAnimalType) ? ` · ${r.expenseAnimalType} ${r.expenseSex || ''}` : ''}`,number(r.lossQuantity) ? `${r.lossQuantity} ${r.lossAnimalType || 'animal(is)'}` : '—',r.party,money(r.value)] }
+    ? { title:'Investimentos e gastos', desc:'Lance todo custo do lote: frete, viagem, insumo, medicamento ou perdas.', type:'expense', rows:filteredExpenses, cols:['Lançamento','Vencimento','Status','Tipo','Categoria','Descrição','Lote / alocação','Perda','Fornecedor','Valor'], values:r=>[dateBR(r.date),dateBR(r.dueDate || r.date),expenseStatusBadge(r),r.type,r.category,r.description,`${r.lot || '—'}${r.expenseAnimalType && !allOption(r.expenseAnimalType) ? ` · ${r.expenseAnimalType} ${r.expenseSex || ''}` : ''}`,number(r.lossQuantity) ? `${r.lossQuantity} ${r.lossAnimalType || 'animal(is)'}` : '—',r.party,money(r.value)] }
     : kind === 'compras'
       ? { title:'Compras de gado', desc:'Cada compra pode entrar no mesmo lote; o relatório consolida o custo médio.', type:'purchase', rows:data.purchases, cols:['Lote','Data','Animais','Sexo','Qtd.','Peso médio','Valor pago'], values:r=>[r.lot,dateBR(r.date),r.animalType,r.sex,r.quantity,`${r.avgWeight||'—'} kg`,money(number(r.value)+number(r.freight))] }
       : { title:'Vendas de gado', desc:'Vendas parciais são confrontadas com o custo médio da categoria dentro do lote.', type:'sale', rows:data.sales, cols:['Lote','Data','Animais','Sexo','Qtd.','Peso médio','Valor recebido','Resultado'], values:r=>[r.lot,dateBR(r.date),r.animalType,r.sex,r.quantity,`${r.avgWeight||'—'} kg`,money(r.value),lotPerformance(r)] };
-  const summary = expense ? `<div class="summary-strip"><div>Total de lançamentos<strong>${cfg.rows.length}</strong></div><div>Pago / já saiu do caixa<strong class="green">${money(total(paidExpenses()))}</strong></div><div>A pagar / provisões<strong class="red">${money(total(payableExpenses()))}</strong></div><div>Vence neste mês<strong>${money(total(dueThisMonth()))}</strong></div></div>` : `<div class="summary-strip"><div>Total de lançamentos<strong>${cfg.rows.length}</strong></div><div>Valor acumulado<strong>${money(total(cfg.rows))}</strong></div></div>`;
-  return `<div class="content"><div class="section-title"><div><h2>${cfg.title}</h2><p>${cfg.desc}</p></div><div class="sheet-actions">${button(cfg.type)}</div></div>${summary}<div class="panel"><div class="table-wrap"><table><thead><tr>${cfg.cols.map(c=>`<th>${c}</th>`).join('')}<th></th></tr></thead><tbody>${cfg.rows.length ? cfg.rows.map((row,index)=>`<tr>${cfg.values(row).map(value=>`<td>${value||'—'}</td>`).join('')}<td>${expense ? `<button class="btn ${isExpensePaid(row)?'danger':'primary'}" data-payment-toggle="${index}">${isExpensePaid(row)?'Marcar a pagar':'Marcar pago'}</button> ` : ''}<button class="btn danger" data-delete="${cfg.type}" data-index="${index}">Excluir</button></td></tr>`).join('') : `<tr><td class="empty" colspan="${cfg.cols.length+1}">Ainda não há lançamentos. Use o botão para começar.</td></tr>`}</tbody></table></div></div></div>`;
+  const filteredPaid = cfg.rows.filter(isExpensePaid);
+  const filteredPayable = cfg.rows.filter(row => !isExpensePaid(row));
+  const filterPanel = expense ? `<section class="panel expense-report"><div class="panel-head"><div><h3>Relatório de gastos</h3><small>Combine categorias e separe os custos dos lotes dos gastos gerais da operação.</small></div><button class="btn secondary" data-print-expense-report>Imprimir relatório</button></div><div class="expense-filter-grid"><label>Origem do gasto<select data-expense-scope><option value="all" ${expenseReportFilters.scope==='all'?'selected':''}>Todos os gastos</option><option value="general" ${expenseReportFilters.scope==='general'?'selected':''}>Somente gerais / sem lote</option><option value="lot" ${expenseReportFilters.scope==='lot'?'selected':''}>Somente vinculados a lote</option></select></label><div class="expense-category-filter"><strong>Categorias (selecione uma ou mais)</strong><div class="filter-options">${expenseCategories.map(category => `<label><input type="checkbox" data-expense-category value="${esc(category)}" ${expenseReportFilters.categories.includes(category)?'checked':''}> ${esc(category)}</label>`).join('')}</div></div></div><div class="sheet-actions"><button class="btn secondary" data-clear-expense-filter>Limpar filtros</button></div></section>` : '';
+  const summary = expense ? `<div class="summary-strip"><div>Lançamentos filtrados<strong>${cfg.rows.length}</strong></div><div>Total do relatório<strong>${money(total(cfg.rows))}</strong></div><div>Pago / já saiu do caixa<strong class="green">${money(total(filteredPaid))}</strong></div><div>A pagar / provisões<strong class="red">${money(total(filteredPayable))}</strong></div></div>` : `<div class="summary-strip"><div>Total de lançamentos<strong>${cfg.rows.length}</strong></div><div>Valor acumulado<strong>${money(total(cfg.rows))}</strong></div></div>`;
+  return `<div class="content"><div class="section-title"><div><h2>${cfg.title}</h2><p>${cfg.desc}</p></div><div class="sheet-actions">${button(cfg.type)}</div></div>${filterPanel}${summary}<div class="panel"><div class="table-wrap"><table><thead><tr>${cfg.cols.map(c=>`<th>${c}</th>`).join('')}<th></th></tr></thead><tbody>${cfg.rows.length ? cfg.rows.map(row=>{ const index=data[cfg.type === 'expense' ? 'expenses' : cfg.type === 'purchase' ? 'purchases' : 'sales'].indexOf(row); return `<tr>${cfg.values(row).map(value=>`<td>${value||'—'}</td>`).join('')}<td>${expense ? `<button class="btn ${isExpensePaid(row)?'danger':'primary'}" data-payment-toggle="${index}">${isExpensePaid(row)?'Marcar a pagar':'Marcar pago'}</button> ` : ''}<button class="btn danger" data-delete="${cfg.type}" data-index="${index}">Excluir</button></td></tr>`; }).join('') : `<tr><td class="empty" colspan="${cfg.cols.length+1}">Nenhum lançamento corresponde aos filtros selecionados.</td></tr>`}</tbody></table></div></div></div>`;
+}
+
+function printExpenseReport() {
+  const rows = data.expenses.filter(row => {
+    const hasLot = Boolean(lotText(row.lot));
+    const scopeMatches = expenseReportFilters.scope === 'all' || (expenseReportFilters.scope === 'lot' ? hasLot : !hasLot);
+    const categoryMatches = !expenseReportFilters.categories.length || expenseReportFilters.categories.includes(row.category);
+    return scopeMatches && categoryMatches;
+  }).sort((a,b) => dateValue(a).localeCompare(dateValue(b)));
+  const scopeName = { all:'Todos os gastos', general:'Somente gerais / sem lote', lot:'Somente vinculados a lote' }[expenseReportFilters.scope];
+  const categories = expenseReportFilters.categories.length ? expenseReportFilters.categories.join(', ') : 'Todas as categorias';
+  const popup = window.open('', '_blank');
+  if (!popup) return alert('Permita a abertura de janela para imprimir o relatório.');
+  popup.document.write(`<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>Relatório de investimentos e gastos</title><style>body{font-family:Arial,sans-serif;color:#18251f;margin:32px}h1{margin:0 0 4px}p{color:#617169;margin:5px 0}table{width:100%;border-collapse:collapse;margin-top:24px;font-size:12px}th,td{padding:10px 8px;border-bottom:1px solid #dfe8e2;text-align:left}th{background:#f2f7f3;color:#526058}strong{font-size:17px}.total{margin-top:18px;font-size:18px}.brand{color:#176044;font-weight:bold;letter-spacing:1px}</style></head><body><div class="brand">QUERÊNCIA DE BOIADEIRO AGROPECUÁRIA</div><h1>Relatório de investimentos e gastos</h1><p><strong>Origem:</strong> ${esc(scopeName)} · <strong>Categorias:</strong> ${esc(categories)}</p><p><strong>Gerado em:</strong> ${dateBR(today)}</p><table><thead><tr><th>Data</th><th>Categoria</th><th>Descrição</th><th>Lote</th><th>Fornecedor</th><th>Situação</th><th>Valor</th></tr></thead><tbody>${rows.map(row => `<tr><td>${dateBR(row.date)}</td><td>${esc(row.category)}</td><td>${esc(row.description)}</td><td>${esc(row.lot || '—')}</td><td>${esc(row.party || '—')}</td><td>${esc(expenseStatus(row))}</td><td>${money(row.value)}</td></tr>`).join('') || '<tr><td colspan="7">Nenhum lançamento encontrado.</td></tr>'}</tbody></table><p class="total"><strong>Total do relatório: ${money(total(rows))}</strong></p><script>window.onload=()=>window.print()</script></body></html>`);
+  popup.document.close();
 }
 
 function openForm(type) {
@@ -623,6 +649,10 @@ function bindPage() {
   document.querySelectorAll('[data-edit]').forEach(button => button.onclick = () => openEdit(button.dataset.edit, Number(button.dataset.index)));
   document.querySelectorAll('[data-delete]').forEach(button => button.onclick = async () => { if(!confirm('Excluir este lançamento?')) return; const removed = await removeRecord(button.dataset.delete, Number(button.dataset.index)); if(!removed) return alert('Não foi possível confirmar a exclusão no banco. O lançamento foi mantido.'); render(); });
   document.querySelectorAll('[data-payment-toggle]').forEach(button => button.onclick = () => { const row=data.expenses[Number(button.dataset.paymentToggle)]; row.paymentStatus=isExpensePaid(row)?'A pagar':'Pago'; save(); render(); });
+  document.querySelector('[data-expense-scope]')?.addEventListener('change', event => { expenseReportFilters.scope = event.target.value; render(); });
+  document.querySelectorAll('[data-expense-category]').forEach(input => input.addEventListener('change', () => { expenseReportFilters.categories = [...document.querySelectorAll('[data-expense-category]:checked')].map(option => option.value); render(); }));
+  document.querySelector('[data-clear-expense-filter]')?.addEventListener('click', () => { expenseReportFilters = { scope:'all', categories:[] }; render(); });
+  document.querySelector('[data-print-expense-report]')?.addEventListener('click', printExpenseReport);
 }
 
 // Este listener em captura substitui o salvamento original e permite atualizar
