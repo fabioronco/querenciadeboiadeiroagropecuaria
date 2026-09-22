@@ -370,11 +370,11 @@ async function loadCloudData(migrate = false) {
   const response = await api('/state');
   if (response.state) {
     const remote = { expenses: response.state.expenses || [], purchases: response.state.purchases || [], sales: response.state.sales || [], meta: response.state.meta || {} };
-    const merged = mergeCloudWithLocal(remote);
-    const mustWrite = needsCloudWrite(remote, merged);
-    data = merged;
+    // Depois que o banco compartilhado existe, ele é a fonte oficial. Mesclar
+    // uma cópia antiga do navegador com o estado remoto fazia lançamentos já
+    // excluídos reaparecerem na tela e voltarem para o banco no próximo ciclo.
+    data = remote;
     saveLocalState(data);
-    if (mustWrite) await api('/state', { method: 'PUT', body: JSON.stringify({ state: cloudState(data) }) });
   } else if (migrate && hasLocalRecords()) {
     await api('/state', { method: 'PUT', body: JSON.stringify({ state: cloudState(data) }) });
   }
@@ -384,20 +384,39 @@ async function loadCloudData(migrate = false) {
 }
 
 async function saveCloud() {
-  if (!cloudToken) return;
+  if (!cloudToken) return false;
   setSyncStatus('Sincronizando...');
   try {
     await api('/state', { method: 'PUT', body: JSON.stringify({ state: cloudState(data) }) });
     setSyncStatus('Dados compartilhados');
+    return true;
   } catch (error) {
     console.error(error);
     setSyncStatus('Falha ao sincronizar');
+    return false;
   }
 }
 
 function save() {
   saveLocalState(data);
-  void saveCloud();
+  return saveCloud();
+}
+
+async function removeRecord(type, index) {
+  const map = { expense:'expenses', purchase:'purchases', sale:'sales', quote:'quotes' };
+  const rows = data[map[type]];
+  const row = rows?.[index];
+  if (!row) return false;
+  rows.splice(index, 1);
+  saveLocalState(data);
+  const synced = await saveCloud();
+  if (!synced) {
+    rows.splice(index, 0, row);
+    saveLocalState(data);
+    return false;
+  }
+  void removeSharedAttachments(row.attachments);
+  return true;
 }
 
 async function enterApp(migrate = false) {
@@ -526,15 +545,10 @@ function lotDetail(id) {
   dialog.innerHTML = `<div class="modal-head"><div><p class="eyebrow">FICHA FINANCEIRA DO LOTE</p><h2>Lote ${esc(lot.name)}</h2></div><div class="sheet-actions"><button class="btn primary" data-print-lot="${esc(lot.id)}">Imprimir relatório / PDF</button><button class="icon-btn" data-close-lot aria-label="Fechar">×</button></div></div><div class="lot-detail-body"><div class="summary-strip"><div>Compra de animais<strong>${money(info.animalValue)}</strong></div><div>Fretes<strong>${money(info.purchaseFreight + info.expenseFreight)}</strong></div><div>Outras despesas<strong>${money(info.otherExpenses)}</strong></div><div>Custo em estoque<strong>${money(inventory)}</strong></div><div>Custo médio<strong>${heads ? money(inventory / heads) : '—'} / cabeça</strong></div></div>${info.payable ? `<p class="quote-note"><strong>A pagar:</strong> ${money(info.payable)} ainda não compõe o custo pago do lote.</p>` : ''}<div class="table-wrap"><table><thead><tr><th>Data</th><th>Categoria</th><th>Descrição / animais</th><th>Qtd.</th><th>Animal</th><th>Frete</th><th>Total</th><th></th></tr></thead><tbody>${movementRows.map(item => `<tr><td>${dateBR(item.row.date)}</td><td><span class="pill ${item.category === 'Frete' ? 'gold' : ''}">${esc(item.category)}</span></td><td>${esc(item.row.description || `${item.row.animalType || 'Animal'} · ${item.row.sex || ''}`)}</td><td>${item.row.quantity || '—'}</td><td>${money(item.value)}</td><td>${money(item.freight)}</td><td><strong>${money(item.value + item.freight)}</strong></td><td><div class="sheet-actions"><button class="btn secondary" data-edit="${item.type}" data-index="${item.index}" data-close-lot>Editar</button><button class="btn danger" data-delete-lot="${item.type}" data-index="${item.index}">Excluir</button></div></td></tr>`).join('') || `<tr><td class="empty" colspan="8">Sem movimentos vinculados.</td></tr>`}</tbody></table></div></div>`;
   dialog.querySelectorAll('[data-close-lot]').forEach(button => button.onclick = () => dialog.close());
   dialog.querySelectorAll('[data-print-lot]').forEach(button => button.onclick = () => printLotReport(button.dataset.printLot));
-  dialog.querySelectorAll('[data-delete-lot]').forEach(button => button.onclick = () => {
-    const map = { expense:'expenses', purchase:'purchases' };
-    const rows = data[map[button.dataset.deleteLot]];
-    const index = Number(button.dataset.index);
-    const row = rows?.[index];
-    if (!row || !confirm('Excluir este lançamento do lote? Esta ação não pode ser desfeita.')) return;
-    rows.splice(index, 1);
-    void removeSharedAttachments(row.attachments);
-    save();
+  dialog.querySelectorAll('[data-delete-lot]').forEach(button => button.onclick = async () => {
+    if (!confirm('Excluir este lançamento do lote? Esta ação não pode ser desfeita.')) return;
+    const removed = await removeRecord(button.dataset.deleteLot, Number(button.dataset.index));
+    if (!removed) return alert('Não foi possível confirmar a exclusão no banco. O lançamento foi mantido. Tente novamente quando a conexão estiver estável.');
     dialog.close();
     render();
   });
@@ -561,7 +575,7 @@ function bindPage() {
   document.querySelectorAll('[data-view-link]').forEach(button => button.onclick = () => { currentView = button.dataset.viewLink; render(); });
   document.querySelectorAll('[data-lot-detail]').forEach(button => button.onclick = () => lotDetail(button.dataset.lotDetail));
   document.querySelectorAll('[data-edit]').forEach(button => button.onclick = () => openEdit(button.dataset.edit, Number(button.dataset.index)));
-  document.querySelectorAll('[data-delete]').forEach(button => button.onclick = () => { const map={expense:'expenses',purchase:'purchases',sale:'sales',quote:'quotes'}, rows=data[map[button.dataset.delete]], index=Number(button.dataset.index), row=rows[index]; if(!confirm('Excluir este lançamento?')) return; rows.splice(index,1); void removeSharedAttachments(row?.attachments); save(); render(); });
+  document.querySelectorAll('[data-delete]').forEach(button => button.onclick = async () => { if(!confirm('Excluir este lançamento?')) return; const removed = await removeRecord(button.dataset.delete, Number(button.dataset.index)); if(!removed) return alert('Não foi possível confirmar a exclusão no banco. O lançamento foi mantido.'); render(); });
   document.querySelectorAll('[data-payment-toggle]').forEach(button => button.onclick = () => { const row=data.expenses[Number(button.dataset.paymentToggle)]; row.paymentStatus=isExpensePaid(row)?'A pagar':'Pago'; save(); render(); });
 }
 
