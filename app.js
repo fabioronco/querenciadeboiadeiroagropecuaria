@@ -128,14 +128,23 @@ const groupName = row => `${row.animalType || row.lossAnimalType || row.expenseA
 const dateValue = row => String(row.date || row.dueDate || today);
 
 function selectedGroups(groups, row) {
-  const type = lotId(row.expenseAnimalType || row.lossAnimalType || row.animalType);
-  const sex = lotId(row.expenseSex || row.lossSex || row.sex);
+  const loss = lotId(row.category) === 'perda de animais' || number(row.lossQuantity) > 0;
+  const type = lotId(loss ? row.lossAnimalType : (row.expenseAnimalType || row.animalType));
+  const sex = lotId(loss ? row.lossSex : (row.expenseSex || row.sex));
   const exact = [...groups.values()].filter(group => (!type || allOption(type) || group.type === type) && (!sex || allOption(sex) || group.sex === sex));
   return exact.length ? exact : [...groups.values()];
 }
 
 function lotAnalytics() {
   const lots = new Map();
+  const purchaseAverageByLot = new Map();
+  data.purchases.filter(row => lotText(row.lot)).forEach(row => {
+    const id = lotId(row.lot);
+    const current = purchaseAverageByLot.get(id) || { total: 0, count: 0 };
+    current.total += number(row.value);
+    current.count += 1;
+    purchaseAverageByLot.set(id, current);
+  });
   const ensureLot = lot => {
     const id = lotId(lot);
     if (!lots.has(id)) lots.set(id, { id, name: lotText(lot) || 'Sem lote', groups: new Map(), expenses: 0, provisions: 0, purchases: 0, sales: 0, revenue: 0, soldCost: 0, warnings: [] });
@@ -157,7 +166,9 @@ function lotAnalytics() {
     if (event.kind === 'purchase') {
       const group = ensureGroup(lot, event.row);
       const quantity = number(event.row.quantity);
-      const cost = number(event.row.value) + number(event.row.freight);
+      const purchaseAverage = purchaseAverageByLot.get(lot.id);
+      const unitPrice = purchaseAverage ? purchaseAverage.total / purchaseAverage.count : number(event.row.value);
+      const cost = unitPrice * quantity + number(event.row.freight);
       group.bought += quantity; group.live += quantity; group.cost += cost; lot.purchases += cost;
       continue;
     }
@@ -175,12 +186,24 @@ function lotAnalytics() {
       const quantity = number(event.row.lossQuantity || event.row.quantity);
       const groups = selectedGroups(lot.groups, event.row).filter(group => group.live > 0);
       let remaining = quantity;
+      let removedCost = 0;
       for (const group of groups) {
         const removed = Math.min(group.live, remaining);
+        const unitCost = group.live ? group.cost / group.live : 0;
+        const cost = unitCost * removed;
+        group.cost -= cost;
+        removedCost += cost;
         group.live -= removed; group.lost += removed; remaining -= removed;
         if (!remaining) break;
       }
       if (remaining > 0) lot.warnings.push(`Perda informada maior que o estoque: ${number(event.row.lossQuantity || event.row.quantity)} cabeça(s).`);
+      const lossValue = number(event.row.value) || removedCost;
+      if (!isExpensePaid(event.row)) { lot.provisions += lossValue; continue; }
+      const survivors = groups.filter(group => group.live > 0);
+      if (!survivors.length) survivors.push(...[...lot.groups.values()].filter(group => group.live > 0));
+      const heads = survivors.reduce((sum, group) => sum + group.live, 0);
+      if (heads) survivors.forEach(group => { group.cost += lossValue * group.live / heads; });
+      if (lossValue) lot.expenses += lossValue;
       continue;
     }
     const saleGroup = ensureGroup(lot, event.row);
@@ -230,10 +253,24 @@ function openForm(type) {
   document.querySelector('#modalTitle').textContent = quote ? 'Nova cotação de animais' : expense ? 'Adicionar gasto ou investimento' : sale ? 'Registrar venda de gado' : 'Registrar compra de gado';
   document.querySelector('#modalEyebrow').textContent = quote ? 'COTAÇÃO DE MERCADO' : expense ? 'INVESTIMENTOS E GASTOS' : sale ? 'VENDA DE GADO' : 'COMPRA DE GADO';
   if (quote) { fields.innerHTML = input('date','Data','date') + select('operation','Operação',['Compra','Venda']) + select('category','Categoria',['Bezerro(a)','Desmama','Garrote','Novilho(a)','Boi magro','Boi gordo','Vaca','Matriz','Touro','Outro']) + input('breed','Raça / cruzamento') + select('sex','Sexo',['Macho','Fêmea','Misto']) + input('quantity','Quantidade','number') + input('avgWeight','Peso médio (kg)','number') + input('city','Praça / cidade') + input('state','Estado') + select('priceBasis','Base de preço',['@','kg vivo','cabeça','lote']) + input('price','Preço unitário (R$)','number') + input('paymentTerms','Condição de pagamento') + `<label class="full">Observações<textarea name="notes"></textarea></label>`; }
-  else if (expense) { fields.innerHTML = input('date','Data do lançamento','date') + input('dueDate','Vencimento / previsão de pagamento','date') + select('paymentStatus','Situação do pagamento',['Pago','A pagar']) + select('type','Tipo',['Gasto','Investimento','Despesa']) + select('category','Categoria',['Frete','Despesa de viagem','Alimentação','Sanidade','Medicamento','Mão de obra','Insumo','Infraestrutura','Financeiro','Perda de animais','Outro']) + input('lot','Lote relacionado') + select('expenseAnimalType','Aplicar custo a',['Todo o lote',...animalGroups]) + select('expenseSex','Sexo / grupo',['Todos','Macho','Fêmea','Misto']) + input('lossQuantity','Quantidade perdida (somente se for perda)','number') + select('lossAnimalType','Tipo dos animais perdidos',['Todos',...animalGroups]) + select('lossSex','Sexo dos animais perdidos',['Todos','Macho','Fêmea','Misto']) + input('party','Fornecedor / beneficiário') + input('value','Valor (R$)','number') + input('description','Descrição','text','',true) + `<p class="quote-note full"><strong>Perda de animais:</strong> escolha essa categoria, informe o lote e a quantidade. Deixe o valor em R$ como zero se não houver outro custo; o sistema recalcula o custo médio dos animais restantes.</p>`; }
-  else { fields.innerHTML = input('lot','Identificação do lote') + input('date','Data','date') + (sale ? '' : select('entryCategory','Categoria do lançamento',['Animal'])) + select('animalType','Tipo de animais',animalGroups) + input('breed','Raça / cruzamento') + select('sex','Sexo',['Macho','Fêmea','Misto']) + input('quantity','Quantidade','number') + input('avgWeight','Peso médio (kg)','number') + input('freight','Custo de frete (R$)','number') + input('value',sale ? 'Valor recebido (R$)' : 'Valor pago (R$)','number') + input('party',sale ? 'Comprador' : 'Vendedor') + input('city','Cidade') + input('state','Estado') + `<label class="full">Observações<textarea name="notes"></textarea></label>`; }
+  else if (expense) { fields.innerHTML = input('date','Data do lançamento','date') + input('dueDate','Vencimento / previsão de pagamento','date') + select('paymentStatus','Situação do pagamento',['Pago','A pagar']) + select('type','Tipo',['Gasto','Investimento','Despesa']) + select('category','Categoria',['Frete','Despesa de viagem','Alimentação','Sanidade','Medicamento','Mão de obra','Insumo','Infraestrutura','Financeiro','Perda de animais','Outro']) + input('lot','Lote relacionado') + select('expenseAnimalType','Aplicar custo a',['Todo o lote',...animalGroups]) + select('expenseSex','Sexo / grupo',['Todos','Macho','Fêmea','Misto']) + input('lossQuantity','Quantidade perdida (somente se for perda)','number') + select('lossAnimalType','Tipo dos animais perdidos',['Todos',...animalGroups]) + select('lossSex','Sexo dos animais perdidos',['Todos','Macho','Fêmea','Misto']) + input('party','Fornecedor / beneficiário (opcional)') + input('value','Valor (R$)','number') + input('description','Descrição','text','',true) + `<p class="quote-note full"><strong>Perda de animais:</strong> escolha essa categoria, informe lote, quantidade, tipo e sexo. No valor, informe o total das cabeças perdidas; ele entra uma única vez como custo dos animais que restarem.</p>`; }
+  else { fields.innerHTML = input('lot','Identificação do lote') + input('date','Data','date') + (sale ? '' : select('entryCategory','Categoria do lançamento',['Animal'])) + select('animalType','Tipo de animais',animalGroups) + input('breed','Raça / cruzamento') + select('sex','Sexo',['Macho','Fêmea','Misto']) + input('quantity','Quantidade','number') + input('avgWeight','Peso médio (kg)','number') + input('freight','Custo de frete (R$)','number') + input('value',sale ? 'Valor recebido (R$)' : 'Valor por cabeça (R$)','number') + input('party',sale ? 'Comprador' : 'Vendedor') + input('city','Cidade') + input('state','Estado') + `<label class="full">Observações<textarea name="notes"></textarea></label>`; }
   fields.querySelector('[name=date]').value = today;
   if (expense) fields.querySelector('[name=dueDate]').value = today;
+  if (expense) {
+    const category = fields.querySelector('[name=category]');
+    const valueLabel = fields.querySelector('[name=value]').closest('label');
+    const allocation = ['expenseAnimalType','expenseSex'].map(name => fields.querySelector(`[name="${name}"]`).closest('label'));
+    const lossFields = ['lossQuantity','lossAnimalType','lossSex'].map(name => fields.querySelector(`[name="${name}"]`).closest('label'));
+    const updateLossFields = () => {
+      const loss = lotId(category.value) === 'perda de animais';
+      allocation.forEach(label => label.hidden = loss);
+      lossFields.forEach(label => label.hidden = !loss);
+      valueLabel.firstChild.textContent = loss ? 'Valor total da perda (R$)' : 'Valor (R$)';
+    };
+    category.addEventListener('change', updateLossFields);
+    updateLossFields();
+  }
   dialog.dataset.type = type; dialog.showModal();
 }
 
@@ -475,13 +512,17 @@ function expenseForLot(lot) {
 function lotCostBreakdown(lot) {
   const purchases = data.purchases.filter(row => lotId(row.lot) === lot.id);
   const expenses = expenseForLot(lot);
-  const animalValue = purchases.reduce((sum, row) => sum + number(row.value), 0);
+  const animalsBought = purchases.reduce((sum, row) => sum + number(row.quantity), 0);
+  // O valor informado na compra é o preço por cabeça. O preço médio do lote é
+  // a média das compras; depois ele é aplicado à quantidade total adquirida.
+  const animalValue = purchases.length ? purchases.reduce((sum, row) => sum + number(row.value), 0) / purchases.length : 0;
+  const animalPurchaseTotal = animalValue * animalsBought;
   const purchaseFreight = purchases.reduce((sum, row) => sum + number(row.freight), 0);
   const paidExpenses = expenses.filter(isExpensePaid);
   const expenseFreight = paidExpenses.filter(row => lotId(row.category) === 'frete').reduce((sum, row) => sum + number(row.value), 0);
-  const otherExpenses = paidExpenses.filter(row => lotId(row.category) !== 'frete' && lotId(row.category) !== 'perda de animais').reduce((sum, row) => sum + number(row.value), 0);
+  const otherExpenses = paidExpenses.filter(row => lotId(row.category) !== 'frete').reduce((sum, row) => sum + number(row.value), 0);
   const payable = expenses.filter(row => !isExpensePaid(row)).reduce((sum, row) => sum + number(row.value), 0);
-  return { purchases, expenses, animalValue, purchaseFreight, expenseFreight, otherExpenses, payable };
+  return { purchases, expenses, animalsBought, animalValue, animalPurchaseTotal, purchaseFreight, expenseFreight, otherExpenses, payable };
 }
 
 function lotSummaryRow(lot) {
@@ -490,7 +531,7 @@ function lotSummaryRow(lot) {
   const bought = groups.reduce((sum, group) => sum + group.bought, 0);
   const inventory = groups.reduce((sum, group) => sum + group.cost, 0);
   const detail = lotCostBreakdown(lot);
-  return `<tr><td><strong>Lote ${esc(lot.name)}</strong><br><small>${groups.map(group => esc(group.label)).join(' · ')}</small></td><td>${bought}</td><td>${heads}</td><td>${money(detail.animalValue)}</td><td>${money(detail.purchaseFreight + detail.expenseFreight)}</td><td>${money(detail.otherExpenses)}</td><td><strong>${money(inventory)}</strong></td><td>${heads ? money(inventory / heads) : '—'}</td><td><button class="btn secondary" data-lot-detail="${esc(lot.id)}">Visualizar</button></td></tr>`;
+  return `<tr><td><strong>${esc(lot.name)}</strong><br><small>${groups.map(group => esc(group.label)).join(' · ')}</small></td><td>${bought}</td><td>${heads}</td><td>${money(detail.animalValue)} / cabeça</td><td>${money(detail.purchaseFreight + detail.expenseFreight)}</td><td>${money(detail.otherExpenses)}</td><td><strong>${money(inventory)}</strong></td><td>${heads ? money(inventory / heads) : '—'}</td><td><button class="btn secondary" data-lot-detail="${esc(lot.id)}">Visualizar</button></td></tr>`;
 }
 
 function recordsView(kind) {
@@ -498,7 +539,7 @@ function recordsView(kind) {
     const lots = lotAnalytics();
     const totalInvested = lots.reduce((sum, lot) => sum + [...lot.groups.values()].reduce((sub, group) => sub + group.cost, 0), 0);
     const totalHeads = lots.reduce((sum, lot) => sum + [...lot.groups.values()].reduce((sub, group) => sub + group.live, 0), 0);
-    return `<div class="content"><div class="section-title"><div><h2>Compras por lote</h2><p>Cada lote reúne a compra efetiva de animais, fretes e todas as despesas vinculadas.</p></div><div class="sheet-actions">${button('purchase','Nova compra de animal')} ${button('expense','Lançar frete ou despesa')}</div></div><div class="summary-strip"><div>Lotes ativos<strong>${lots.filter(lot => [...lot.groups.values()].some(group => group.live)).length}</strong></div><div>Animais em estoque<strong>${totalHeads}</strong></div><div>Investido em estoque<strong>${money(totalInvested)}</strong></div><div>Custo médio geral<strong>${totalHeads ? money(totalInvested / totalHeads) : '—'} / cabeça</strong></div></div><div class="quote-note"><strong>Classificação dos lançamentos:</strong> compras de gado são <strong>Animal</strong>; no botão “Lançar frete ou despesa”, informe o mesmo lote e escolha <strong>Frete</strong> ou a categoria correspondente. Tudo entra no resumo do lote.</div><div class="panel"><div class="table-wrap"><table><thead><tr><th>Lote</th><th>Comprados</th><th>Estoque</th><th>Animal</th><th>Frete</th><th>Despesas</th><th>Custo em estoque</th><th>Custo médio</th><th></th></tr></thead><tbody>${lots.length ? lots.map(lotSummaryRow).join('') : `<tr><td class="empty" colspan="9">Ainda não há compras. Cadastre a primeira compra de animal para criar um lote.</td></tr>`}</tbody></table></div></div></div>`;
+    return `<div class="content"><div class="section-title"><div><h2>Compras por lote</h2><p>Cada lote reúne a compra efetiva de animais, fretes e todas as despesas vinculadas.</p></div><div class="sheet-actions">${button('purchase','Nova compra de animal')} ${button('expense','Lançar frete ou despesa')}</div></div><div class="summary-strip"><div>Lotes ativos<strong>${lots.filter(lot => [...lot.groups.values()].some(group => group.live)).length}</strong></div><div>Animais em estoque<strong>${totalHeads}</strong></div><div>Investido em estoque<strong>${money(totalInvested)}</strong></div><div>Custo médio geral<strong>${totalHeads ? money(totalInvested / totalHeads) : '—'} / cabeça</strong></div></div><div class="quote-note"><strong>Classificação dos lançamentos:</strong> em compras, informe o <strong>valor por cabeça</strong>. O sistema calcula a média das compras do lote, soma fretes e despesas e divide pelo total de animais comprados. No botão “Lançar frete ou despesa”, informe o mesmo lote e escolha <strong>Frete</strong> ou a categoria correspondente.</div><div class="panel"><div class="table-wrap"><table><thead><tr><th>Lote</th><th>Comprados</th><th>Estoque</th><th>Preço médio / cabeça</th><th>Frete</th><th>Despesas</th><th>Custo em estoque</th><th>Custo médio</th><th></th></tr></thead><tbody>${lots.length ? lots.map(lotSummaryRow).join('') : `<tr><td class="empty" colspan="9">Ainda não há compras. Cadastre a primeira compra de animal para criar um lote.</td></tr>`}</tbody></table></div></div></div>`;
   }
   const expense = kind === 'gastos';
   const cfg = expense
@@ -517,7 +558,7 @@ function printLotReport(id) {
   const inventory = groups.reduce((sum, group) => sum + group.cost, 0);
   const result = lot.revenue - lot.soldCost;
   const movements = [
-    ...info.purchases.map(row => ({ date:row.date, kind:'Compra de animal', category:'Animal', description:`${row.animalType || 'Animal'} · ${row.sex || 'Misto'}${row.party ? ` · ${row.party}` : ''}`, quantity:row.quantity, value:number(row.value), freight:number(row.freight) })),
+    ...info.purchases.map(row => ({ date:row.date, kind:'Compra de animal', category:'Animal', description:`${row.animalType || 'Animal'} · ${row.sex || 'Misto'}${row.party ? ` · ${row.party}` : ''}`, quantity:row.quantity, value:number(row.value) * number(row.quantity), freight:number(row.freight) })),
     ...info.expenses.map(row => ({ date:row.date, kind:'Despesa do lote', category:row.category || 'Despesa', description:`${row.description || '—'}${row.party ? ` · ${row.party}` : ''}`, quantity:row.lossQuantity || '—', value:number(row.value), freight:0 })),
     ...data.sales.filter(row => lotId(row.lot) === lot.id).map(row => ({ date:row.date, kind:'Venda de animal', category:'Venda', description:`${row.animalType || 'Animal'} · ${row.sex || 'Misto'}${row.party ? ` · ${row.party}` : ''}`, quantity:row.quantity, value:number(row.value), freight:number(row.freight) }))
   ].sort((a,b) => dateValue(a).localeCompare(dateValue(b)));
@@ -537,12 +578,12 @@ function lotDetail(id) {
   const inventory = groups.reduce((sum, group) => sum + group.cost, 0);
   const heads = groups.reduce((sum, group) => sum + group.live, 0);
   const movementRows = [
-    ...info.purchases.map(row => ({ source:'Compra de animal', category:'Animal', row, type:'purchase', index:data.purchases.indexOf(row), value:number(row.value), freight:number(row.freight) })),
+    ...info.purchases.map(row => ({ source:'Compra de animal', category:'Animal', row, type:'purchase', index:data.purchases.indexOf(row), value:number(row.value) * number(row.quantity), freight:number(row.freight) })),
     ...info.expenses.map(row => ({ source:'Custo do lote', category:row.category || 'Despesa', row, type:'expense', index:data.expenses.indexOf(row), value:number(row.value), freight:0 }))
   ].sort((a,b) => dateValue(b.row).localeCompare(dateValue(a.row)));
   let dialog = document.querySelector('#lotDetailDialog');
   if (!dialog) { dialog = document.createElement('dialog'); dialog.id = 'lotDetailDialog'; document.body.append(dialog); }
-  dialog.innerHTML = `<div class="modal-head"><div><p class="eyebrow">FICHA FINANCEIRA DO LOTE</p><h2>Lote ${esc(lot.name)}</h2></div><div class="sheet-actions"><button class="btn primary" data-print-lot="${esc(lot.id)}">Imprimir relatório / PDF</button><button class="icon-btn" data-close-lot aria-label="Fechar">×</button></div></div><div class="lot-detail-body"><div class="summary-strip"><div>Compra de animais<strong>${money(info.animalValue)}</strong></div><div>Fretes<strong>${money(info.purchaseFreight + info.expenseFreight)}</strong></div><div>Outras despesas<strong>${money(info.otherExpenses)}</strong></div><div>Custo em estoque<strong>${money(inventory)}</strong></div><div>Custo médio<strong>${heads ? money(inventory / heads) : '—'} / cabeça</strong></div></div>${info.payable ? `<p class="quote-note"><strong>A pagar:</strong> ${money(info.payable)} ainda não compõe o custo pago do lote.</p>` : ''}<div class="table-wrap"><table><thead><tr><th>Data</th><th>Categoria</th><th>Descrição / animais</th><th>Qtd.</th><th>Animal</th><th>Frete</th><th>Total</th><th></th></tr></thead><tbody>${movementRows.map(item => `<tr><td>${dateBR(item.row.date)}</td><td><span class="pill ${item.category === 'Frete' ? 'gold' : ''}">${esc(item.category)}</span></td><td>${esc(item.row.description || `${item.row.animalType || 'Animal'} · ${item.row.sex || ''}`)}</td><td>${item.row.quantity || '—'}</td><td>${money(item.value)}</td><td>${money(item.freight)}</td><td><strong>${money(item.value + item.freight)}</strong></td><td><div class="sheet-actions"><button class="btn secondary" data-edit="${item.type}" data-index="${item.index}" data-close-lot>Editar</button><button class="btn danger" data-delete-lot="${item.type}" data-index="${item.index}">Excluir</button></div></td></tr>`).join('') || `<tr><td class="empty" colspan="8">Sem movimentos vinculados.</td></tr>`}</tbody></table></div></div>`;
+  dialog.innerHTML = `<div class="modal-head"><div><p class="eyebrow">FICHA FINANCEIRA DO LOTE</p><h2>${esc(lot.name)}</h2></div><div class="sheet-actions"><button class="btn primary" data-print-lot="${esc(lot.id)}">Imprimir relatório / PDF</button><button class="icon-btn" data-close-lot aria-label="Fechar">×</button></div></div><div class="lot-detail-body"><div class="summary-strip"><div>Compra de animais (média)<strong>${money(info.animalValue)} / cabeça</strong></div><div>Fretes<strong>${money(info.purchaseFreight + info.expenseFreight)}</strong></div><div>Outras despesas<strong>${money(info.otherExpenses)}</strong></div><div>Custo em estoque<strong>${money(inventory)}</strong></div><div>Custo médio<strong>${heads ? money(inventory / heads) : '—'} / cabeça</strong></div></div>${info.payable ? `<p class="quote-note"><strong>A pagar:</strong> ${money(info.payable)} ainda não compõe o custo pago do lote.</p>` : ''}<div class="table-wrap"><table><thead><tr><th>Data</th><th>Categoria</th><th>Descrição / animais</th><th>Qtd.</th><th>Animal</th><th>Frete</th><th>Total</th><th></th></tr></thead><tbody>${movementRows.map(item => `<tr><td>${dateBR(item.row.date)}</td><td><span class="pill ${item.category === 'Frete' ? 'gold' : ''}">${esc(item.category)}</span></td><td>${esc(item.row.description || `${item.row.animalType || 'Animal'} · ${item.row.sex || ''}`)}</td><td>${item.row.quantity || '—'}</td><td>${money(item.value)}</td><td>${money(item.freight)}</td><td><strong>${money(item.value + item.freight)}</strong></td><td><div class="sheet-actions"><button class="btn secondary" data-edit="${item.type}" data-index="${item.index}" data-close-lot>Editar</button><button class="btn danger" data-delete-lot="${item.type}" data-index="${item.index}">Excluir</button></div></td></tr>`).join('') || `<tr><td class="empty" colspan="8">Sem movimentos vinculados.</td></tr>`}</tbody></table></div></div>`;
   dialog.querySelectorAll('[data-close-lot]').forEach(button => button.onclick = () => dialog.close());
   dialog.querySelectorAll('[data-print-lot]').forEach(button => button.onclick = () => printLotReport(button.dataset.printLot));
   dialog.querySelectorAll('[data-delete-lot]').forEach(button => button.onclick = async () => {
@@ -565,6 +606,7 @@ function openEdit(type, index) {
     const field = form.elements.namedItem(name);
     if (field && typeof value !== 'object') field.value = value ?? '';
   });
+  form.elements.namedItem('category')?.dispatchEvent(new Event('change'));
   const dialog = document.querySelector('#recordDialog');
   dialog.dataset.editIndex = String(index);
   document.querySelector('#modalTitle').textContent = 'Editar lançamento';
