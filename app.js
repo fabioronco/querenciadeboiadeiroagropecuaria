@@ -645,6 +645,7 @@ function openEdit(type, index) {
 }
 
 function bindPage() {
+  document.querySelectorAll('.nav-item').forEach(button => button.onclick = () => { currentView = button.dataset.view; document.querySelector('#sidebar').classList.remove('open'); render(); });
   document.querySelectorAll('[data-new]').forEach(button => button.onclick = () => openForm(button.dataset.new));
   document.querySelectorAll('[data-view-link]').forEach(button => button.onclick = () => { currentView = button.dataset.viewLink; render(); });
   document.querySelectorAll('[data-lot-detail]').forEach(button => button.onclick = () => lotDetail(button.dataset.lotDetail));
