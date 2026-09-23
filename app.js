@@ -4,6 +4,14 @@ const seed = { expenses: [], purchases: [], sales: [], quotes: [], meta: { capit
 let data = JSON.parse(localStorage.getItem(key) || JSON.stringify(seed));
 let currentView = 'dashboard';
 let expenseReportFilters = { scope: 'all', categories: [] };
+// Garante a navegação mesmo se um botão for recriado durante a renderização.
+document.addEventListener('click', event => {
+  const item = event.target.closest?.('.nav-item');
+  if (!item) return;
+  currentView = item.dataset.view;
+  document.querySelector('#sidebar')?.classList.remove('open');
+  render();
+}, true);
 const app = document.querySelector('#app');
 const brl = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 });
 const money = n => brl.format(Number(n || 0));
@@ -685,4 +693,4 @@ document.querySelector('#recordForm').addEventListener('submit', async event => 
 }, true);
 })();
 
-// Atualização de relatório publicada.
+// Correção definitiva do menu.
