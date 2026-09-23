@@ -684,3 +684,5 @@ document.querySelector('#recordForm').addEventListener('submit', async event => 
   } catch (error) { alert(error.message || 'Não foi possível salvar o lançamento.'); }
 }, true);
 })();
+
+// Atualização de relatório publicada.
